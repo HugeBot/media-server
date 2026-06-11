@@ -6,6 +6,7 @@ use axum::extract::{Multipart, State};
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::buckets::{MAX_DIMENSION, MIN_DIMENSION};
 use crate::config::AppConfig;
 use crate::error::AppError;
 use crate::image_processing::process_image;
@@ -23,6 +24,7 @@ pub async fn handler(
 ) -> Result<Json<UploadResponse>, AppError> {
     let mut bucket: Option<String> = None;
     let mut image_bytes: Option<Bytes> = None;
+    let mut max_dimension_override: Option<u32> = None;
 
     while let Some(field) = multipart
         .next_field()
@@ -44,6 +46,22 @@ pub async fn handler(
                     .map_err(|e| AppError::BadRequest(format!("invalid image field: {e}")))?;
                 image_bytes = Some(bytes);
             }
+            Some("max_dimension_override") => {
+                let text = field.text().await.map_err(|e| {
+                    AppError::BadRequest(format!("invalid max_dimension_override field: {e}"))
+                })?;
+                let value: u32 = text.parse().map_err(|_| {
+                    AppError::BadRequest(
+                        "max_dimension_override must be a positive integer".into(),
+                    )
+                })?;
+                if !(MIN_DIMENSION..=MAX_DIMENSION).contains(&value) {
+                    return Err(AppError::BadRequest(format!(
+                        "max_dimension_override must be between {MIN_DIMENSION} and {MAX_DIMENSION}"
+                    )));
+                }
+                max_dimension_override = Some(value);
+            }
             _ => {}
         }
     }
@@ -53,7 +71,10 @@ pub async fn handler(
         image_bytes.ok_or_else(|| AppError::BadRequest("missing image field".into()))?;
 
     let bucket_cfg = config.buckets.get(&bucket)?;
-    let max_dimension = bucket_cfg.max_dimension;
+    let max_dimension = match max_dimension_override {
+        Some(override_value) => override_value.min(bucket_cfg.max_dimension),
+        None => bucket_cfg.max_dimension,
+    };
 
     let bytes_len = image_bytes.len();
     let webp = tokio::task::spawn_blocking(move || process_image(&image_bytes, max_dimension))

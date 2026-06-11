@@ -6,8 +6,8 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 
-const MIN_DIMENSION: u32 = 16;
-const MAX_DIMENSION: u32 = 4096;
+pub const MIN_DIMENSION: u32 = 16;
+pub const MAX_DIMENSION: u32 = 4096;
 
 #[derive(Debug, Deserialize)]
 struct BucketsFile {
