@@ -21,6 +21,10 @@ use tracing::{Level, Span};
 use tracing_subscriber::EnvFilter;
 
 use config::AppConfig;
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() {
@@ -47,7 +51,9 @@ async fn main() {
             auth::require_token,
         ));
 
-    let public = Router::new().route("/{bucket}/{image_id}", get(routes::serve::handler));
+    let public = Router::new()
+        .route("/{bucket}/{image_id}", get(routes::serve::handler))
+        .route("/health", get(|| async { "OK" }));
 
     let app = protected
         .merge(public)

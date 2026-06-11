@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::Json;
+use axum::body::Bytes;
 use axum::extract::{Multipart, State};
 use serde::Serialize;
 use uuid::Uuid;
@@ -22,7 +23,7 @@ pub async fn handler(
     mut multipart: Multipart,
 ) -> Result<Json<UploadResponse>, AppError> {
     let mut bucket: Option<Bucket> = None;
-    let mut image_bytes: Option<Vec<u8>> = None;
+    let mut image_bytes: Option<Bytes> = None;
 
     while let Some(field) = multipart
         .next_field()
@@ -42,7 +43,7 @@ pub async fn handler(
                     .bytes()
                     .await
                     .map_err(|e| AppError::BadRequest(format!("invalid image field: {e}")))?;
-                image_bytes = Some(bytes.to_vec());
+                image_bytes = Some(bytes);
             }
             _ => {}
         }
@@ -52,7 +53,10 @@ pub async fn handler(
     let image_bytes =
         image_bytes.ok_or_else(|| AppError::BadRequest("missing image field".into()))?;
 
-    let webp = process_image(&image_bytes)?;
+    let bytes_len = image_bytes.len();
+    let webp = tokio::task::spawn_blocking(move || process_image(&image_bytes))
+        .await
+        .expect("image processing task panicked")?;
 
     let image_id = Uuid::now_v7();
 
@@ -65,7 +69,7 @@ pub async fn handler(
     tracing::info!(
         bucket = bucket.as_str(),
         image_id = %image_id,
-        bytes = image_bytes.len(),
+        bytes = bytes_len,
         "stored uploaded image"
     );
 
