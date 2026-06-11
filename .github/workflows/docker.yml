@@ -40,17 +40,40 @@ jobs:
 
       # ghcr.io occasionally drops the connection while BuildKit refreshes
       # the per-blob push token ("failed to fetch oauth token: ... i/o
-      # timeout"); retry the whole build+push on that transient failure.
-      - name: Build and push
-        uses: Wandalen/wretry.action@v3
+      # timeout"); retry the build+push a couple of times on that transient
+      # failure instead of failing the whole run.
+      - name: Build and push (attempt 1)
+        id: push1
+        continue-on-error: true
+        uses: docker/build-push-action@v6
         with:
-          attempt_limit: 3
-          attempt_delay: 15000
-          action: docker/build-push-action@v6
-          with: |
-            context: .
-            push: true
-            tags: ${{ steps.meta.outputs.tags }}
-            labels: ${{ steps.meta.outputs.labels }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push (attempt 2)
+        id: push2
+        if: steps.push1.outcome == 'failure'
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push (attempt 3)
+        if: steps.push1.outcome == 'failure' && steps.push2.outcome == 'failure'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
