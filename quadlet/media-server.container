@@ -1,0 +1,34 @@
+[Unit]
+Description=Media Server image service
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/blad3maker/media-server:latest
+ContainerName=media-server
+AutoUpdate=registry
+
+Network=host
+
+Volume=media-server-data.volume:/data
+
+Environment=BIND_ADDR=0.0.0.0:3000
+Environment=STORAGE_DIR=/data
+Environment=PUBLIC_BASE_URL=https://static-media.huge.bot
+Environment=MAX_AGE_DAYS=15
+Environment=CLEANUP_INTERVAL_SECS=3600
+Environment=MAX_UPLOAD_BYTES=26214400
+
+# `podman secret create media-server-api-token -` (mounted as $API_TOKEN)
+Secret=media-server-api-token,type=env,target=API_TOKEN
+
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=ALL
+
+[Service]
+Restart=always
+TimeoutStartSec=30
+
+[Install]
+WantedBy=default.target
