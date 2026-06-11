@@ -56,10 +56,10 @@ pub async fn handler(
 
     let image_id = Uuid::now_v7();
 
-    let dir = config.storage_dir.join(bucket.as_str());
-    tokio::fs::create_dir_all(&dir).await?;
-
-    let path = dir.join(format!("{image_id}.webp"));
+    let path = config
+        .storage_dir
+        .join(bucket.as_str())
+        .join(format!("{image_id}.webp"));
     tokio::fs::write(&path, webp).await?;
 
     tracing::info!(

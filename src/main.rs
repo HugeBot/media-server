@@ -30,6 +30,13 @@ async fn main() {
 
     let config = Arc::new(AppConfig::from_env());
 
+    for bucket in bucket::Bucket::ALL {
+        let dir = config.storage_dir.join(bucket.as_str());
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .unwrap_or_else(|e| panic!("failed to create storage dir {}: {e}", dir.display()));
+    }
+
     cleanup::spawn(config.clone());
 
     let protected = Router::new()
