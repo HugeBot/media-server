@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use crate::bucket::Bucket;
 use crate::config::AppConfig;
 
-/// Spawns a background task that periodically removes files older than
-/// `config.max_age` from each bucket's storage directory.
+/// Spawns a background task that periodically removes files older than each
+/// bucket's configured lifetime from its storage directory. Buckets without
+/// a configured lifetime are permanent and skipped.
 pub fn spawn(config: Arc<AppConfig>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(config.cleanup_interval);
@@ -17,8 +17,12 @@ pub fn spawn(config: Arc<AppConfig>) -> tokio::task::JoinHandle<()> {
 }
 
 async fn run_once(config: &AppConfig) {
-    for bucket in Bucket::ALL {
-        let dir = config.storage_dir.join(bucket.as_str());
+    for bucket in config.buckets.iter() {
+        let Some(max_age) = bucket.max_age else {
+            continue;
+        };
+
+        let dir = config.storage_dir.join(&bucket.name);
 
         let mut entries = match tokio::fs::read_dir(&dir).await {
             Ok(entries) => entries,
@@ -43,14 +47,14 @@ async fn run_once(config: &AppConfig) {
                 .duration_since(modified)
                 .unwrap_or_default();
 
-            if age > config.max_age && tokio::fs::remove_file(&path).await.is_ok() {
+            if age > max_age && tokio::fs::remove_file(&path).await.is_ok() {
                 removed += 1;
             }
         }
 
         if removed > 0 {
             tracing::info!(
-                bucket = bucket.as_str(),
+                bucket = bucket.name,
                 removed,
                 "cleanup: removed expired file(s)"
             );

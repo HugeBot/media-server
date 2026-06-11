@@ -32,11 +32,13 @@ COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 COPY --from=builder --chown=app:app /data /data
 COPY --from=builder /build/target/release/media-server /usr/local/bin/media-server
+COPY buckets.toml /etc/media-server/buckets.toml
 
 USER app:app
 
 ENV BIND_ADDR=0.0.0.0:3000 \
-    STORAGE_DIR=/data
+    STORAGE_DIR=/data \
+    BUCKETS_CONFIG_PATH=/etc/media-server/buckets.toml
 
 EXPOSE 3000
 

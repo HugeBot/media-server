@@ -2,13 +2,15 @@ use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::buckets::Buckets;
+
 pub struct AppConfig {
     pub bind_addr: String,
     pub storage_dir: PathBuf,
     pub public_base_url: String,
     pub max_upload_bytes: usize,
     pub api_token: String,
-    pub max_age: Duration,
+    pub buckets: Buckets,
     pub cleanup_interval: Duration,
 }
 
@@ -31,10 +33,9 @@ impl AppConfig {
 
         let api_token = env::var("API_TOKEN").expect("API_TOKEN env var must be set");
 
-        let max_age_days: u64 = env::var("MAX_AGE_DAYS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(15);
+        let buckets_config_path =
+            PathBuf::from(env::var("BUCKETS_CONFIG_PATH").unwrap_or_else(|_| "./buckets.toml".to_string()));
+        let buckets = Buckets::load(&buckets_config_path);
 
         let cleanup_interval_secs: u64 = env::var("CLEANUP_INTERVAL_SECS")
             .ok()
@@ -47,7 +48,7 @@ impl AppConfig {
             public_base_url,
             max_upload_bytes,
             api_token,
-            max_age: Duration::from_secs(max_age_days * 24 * 60 * 60),
+            buckets,
             cleanup_interval: Duration::from_secs(cleanup_interval_secs),
         }
     }

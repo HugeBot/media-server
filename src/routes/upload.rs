@@ -6,7 +6,6 @@ use axum::extract::{Multipart, State};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::bucket::Bucket;
 use crate::config::AppConfig;
 use crate::error::AppError;
 use crate::image_processing::process_image;
@@ -22,7 +21,7 @@ pub async fn handler(
     State(config): State<Arc<AppConfig>>,
     mut multipart: Multipart,
 ) -> Result<Json<UploadResponse>, AppError> {
-    let mut bucket: Option<Bucket> = None;
+    let mut bucket: Option<String> = None;
     let mut image_bytes: Option<Bytes> = None;
 
     while let Some(field) = multipart
@@ -36,7 +35,7 @@ pub async fn handler(
                     .text()
                     .await
                     .map_err(|e| AppError::BadRequest(format!("invalid bucket field: {e}")))?;
-                bucket = Some(text.parse()?);
+                bucket = Some(text);
             }
             Some("image") => {
                 let bytes = field
@@ -53,8 +52,11 @@ pub async fn handler(
     let image_bytes =
         image_bytes.ok_or_else(|| AppError::BadRequest("missing image field".into()))?;
 
+    let bucket_cfg = config.buckets.get(&bucket)?;
+    let max_dimension = bucket_cfg.max_dimension;
+
     let bytes_len = image_bytes.len();
-    let webp = tokio::task::spawn_blocking(move || process_image(&image_bytes))
+    let webp = tokio::task::spawn_blocking(move || process_image(&image_bytes, max_dimension))
         .await
         .expect("image processing task panicked")?;
 
@@ -62,24 +64,24 @@ pub async fn handler(
 
     let path = config
         .storage_dir
-        .join(bucket.as_str())
+        .join(&bucket_cfg.name)
         .join(format!("{image_id}.webp"));
     tokio::fs::write(&path, webp).await?;
 
     tracing::info!(
-        bucket = bucket.as_str(),
+        bucket = bucket_cfg.name,
         image_id = %image_id,
         bytes = bytes_len,
         "stored uploaded image"
     );
 
     Ok(Json(UploadResponse {
-        bucket: bucket.as_str().to_string(),
+        bucket: bucket_cfg.name.clone(),
         image_id: image_id.to_string(),
         url: format!(
             "{}/{}/{}",
             config.public_base_url,
-            bucket.as_str(),
+            bucket_cfg.name,
             image_id
         ),
     }))

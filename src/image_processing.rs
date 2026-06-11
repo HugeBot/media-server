@@ -3,16 +3,14 @@ use image::{ExtendedColorType, GenericImageView, ImageEncoder, imageops::FilterT
 
 use crate::error::AppError;
 
-const MAX_DIMENSION: u32 = 1000;
-
 /// Decodes the input image, resizes it so its longest side is at most
-/// `MAX_DIMENSION` (preserving aspect ratio, never upscaling), and encodes
+/// `max_dimension` (preserving aspect ratio, never upscaling), and encodes
 /// the result as a lossless WebP.
-pub fn process_image(bytes: &[u8]) -> Result<Vec<u8>, AppError> {
+pub fn process_image(bytes: &[u8], max_dimension: u32) -> Result<Vec<u8>, AppError> {
     let img = image::load_from_memory(bytes).map_err(AppError::DecodeError)?;
 
     let (width, height) = img.dimensions();
-    let (target_width, target_height) = target_dimensions(width, height);
+    let (target_width, target_height) = target_dimensions(width, height, max_dimension);
 
     let resized = if (target_width, target_height) != (width, height) {
         img.resize(target_width, target_height, FilterType::Lanczos3)
@@ -32,20 +30,20 @@ pub fn process_image(bytes: &[u8]) -> Result<Vec<u8>, AppError> {
 }
 
 /// Computes the output dimensions: the longest side is capped at
-/// `MAX_DIMENSION`, the other side scales proportionally. Images smaller than
-/// `MAX_DIMENSION` on their longest side are left unchanged.
-fn target_dimensions(width: u32, height: u32) -> (u32, u32) {
+/// `max_dimension`, the other side scales proportionally. Images smaller than
+/// `max_dimension` on their longest side are left unchanged.
+fn target_dimensions(width: u32, height: u32, max_dimension: u32) -> (u32, u32) {
     if width >= height {
-        if width <= MAX_DIMENSION {
+        if width <= max_dimension {
             (width, height)
         } else {
-            let new_height = (height as f64 * MAX_DIMENSION as f64 / width as f64).round() as u32;
-            (MAX_DIMENSION, new_height.max(1))
+            let new_height = (height as f64 * max_dimension as f64 / width as f64).round() as u32;
+            (max_dimension, new_height.max(1))
         }
-    } else if height <= MAX_DIMENSION {
+    } else if height <= max_dimension {
         (width, height)
     } else {
-        let new_width = (width as f64 * MAX_DIMENSION as f64 / height as f64).round() as u32;
-        (new_width.max(1), MAX_DIMENSION)
+        let new_width = (width as f64 * max_dimension as f64 / height as f64).round() as u32;
+        (new_width.max(1), max_dimension)
     }
 }

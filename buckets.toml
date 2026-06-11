@@ -1,0 +1,15 @@
+[[bucket]]
+name = "giveaways"
+max_dimension = 1000
+max_age_days = 15
+
+[[bucket]]
+name = "stream-previews"
+max_dimension = 1000
+max_age_days = 15
+
+# Ejemplo de bucket permanente: sin "max_age_days", cleanup nunca borra
+# sus ficheros.
+# [[bucket]]
+# name = "permanent-assets"
+# max_dimension = 2000

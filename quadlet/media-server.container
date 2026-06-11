@@ -12,12 +12,13 @@ AutoUpdate=registry
 Network=host
 
 Volume=media-server-data.volume:/data
+# Override the bundled bucket configuration without rebuilding the image:
+#Volume=/etc/media-server/buckets.toml:/etc/media-server/buckets.toml:ro,Z
 
 Environment=BIND_ADDR=0.0.0.0:3000
 Environment=STORAGE_DIR=/data
 Environment=RUST_LOG=info
 Environment=PUBLIC_BASE_URL=https://static-media.huge.bot
-Environment=MAX_AGE_DAYS=15
 Environment=CLEANUP_INTERVAL_SECS=3600
 Environment=MAX_UPLOAD_BYTES=26214400
 

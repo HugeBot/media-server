@@ -8,7 +8,6 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use uuid::Uuid;
 
-use crate::bucket::Bucket;
 use crate::config::AppConfig;
 use crate::error::AppError;
 
@@ -20,12 +19,12 @@ pub async fn handler(
     Path((bucket, image_id)): Path<(String, String)>,
     request: Request,
 ) -> Result<Response, AppError> {
-    let bucket: Bucket = bucket.parse()?;
+    let bucket_cfg = config.buckets.get(&bucket)?;
     let image_id: Uuid = image_id.parse().map_err(|_| AppError::InvalidImageId)?;
 
     let path = config
         .storage_dir
-        .join(bucket.as_str())
+        .join(&bucket_cfg.name)
         .join(format!("{image_id}.webp"));
 
     let response = ServeFile::new(&path).oneshot(request).await.unwrap();
