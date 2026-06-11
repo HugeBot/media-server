@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: hugebot/media-server
 
 jobs:
   build:
@@ -38,12 +38,19 @@ jobs:
             type=raw,value=latest
             type=sha,format=short
 
+      # ghcr.io occasionally drops the connection while BuildKit refreshes
+      # the per-blob push token ("failed to fetch oauth token: ... i/o
+      # timeout"); retry the whole build+push on that transient failure.
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: Wandalen/wretry.action@v3
         with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          attempt_limit: 3
+          attempt_delay: 15000
+          action: docker/build-push-action@v6
+          with: |
+            context: .
+            push: true
+            tags: ${{ steps.meta.outputs.tags }}
+            labels: ${{ steps.meta.outputs.labels }}
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
