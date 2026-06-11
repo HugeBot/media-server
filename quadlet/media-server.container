@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Container]
-Image=ghcr.io/blad3maker/media-server:latest
+Image=ghcr.io/hugebot/media-server:latest
 ContainerName=media-server
 AutoUpdate=registry
 
