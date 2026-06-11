@@ -45,6 +45,12 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
         };
 
+        if status.is_server_error() {
+            tracing::error!(error = ?self, status = %status, "request failed");
+        } else {
+            tracing::warn!(error = ?self, status = %status, "request rejected");
+        }
+
         (status, Json(json!({ "error": message }))).into_response()
     }
 }

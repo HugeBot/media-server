@@ -62,6 +62,13 @@ pub async fn handler(
     let path = dir.join(format!("{image_id}.webp"));
     tokio::fs::write(&path, webp).await?;
 
+    tracing::info!(
+        bucket = bucket.as_str(),
+        image_id = %image_id,
+        bytes = image_bytes.len(),
+        "stored uploaded image"
+    );
+
     Ok(Json(UploadResponse {
         bucket: bucket.as_str().to_string(),
         image_id: image_id.to_string(),

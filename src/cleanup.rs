@@ -49,9 +49,10 @@ async fn run_once(config: &AppConfig) {
         }
 
         if removed > 0 {
-            println!(
-                "cleanup: removed {removed} expired file(s) from '{}'",
-                bucket.as_str()
+            tracing::info!(
+                bucket = bucket.as_str(),
+                removed,
+                "cleanup: removed expired file(s)"
             );
         }
     }
