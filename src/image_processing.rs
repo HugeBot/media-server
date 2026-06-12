@@ -32,7 +32,7 @@ pub fn process_image(bytes: &[u8], max_dimension: u32) -> Result<Vec<u8>, AppErr
         img.resize(target_width, target_height, FilterType::Lanczos3)
     };
 
-    let rgba = resized.to_rgba8();
+    let rgba = resized.into_rgba8();
     let (width, height) = rgba.dimensions();
 
     let mut buf = Vec::new();

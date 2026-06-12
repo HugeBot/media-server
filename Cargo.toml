@@ -15,7 +15,7 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 mimalloc = "0.1"
-toml = "0.8"
+toml = "1"
 
 [profile.release]
 opt-level = "z"
