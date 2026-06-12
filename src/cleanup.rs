@@ -40,9 +40,8 @@ async fn run_once(config: &AppConfig) {
 
         let dir = bucket.storage_dir(&config.storage_dir);
 
-        let mut entries = match tokio::fs::read_dir(&dir).await {
-            Ok(entries) => entries,
-            Err(_) => continue,
+        let Ok(mut entries) = tokio::fs::read_dir(&dir).await else {
+            continue;
         };
 
         let mut removed = 0u32;

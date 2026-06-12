@@ -25,7 +25,7 @@ const ALLOWED_IMAGE_CONTENT_TYPES: &[&str] =
 pub struct UploadResponse {
     /// Name of the bucket the image was stored in.
     bucket: String,
-    /// UUIDv7 identifier assigned to the stored image.
+    /// `UUIDv7` identifier assigned to the stored image.
     image_id: String,
     /// Fully-qualified public URL from which the image can be fetched
     /// (`GET /{bucket}/{image_id}`).
@@ -46,7 +46,7 @@ pub struct UploadResponse {
 ///
 /// On success, the image is decoded, resized, re-encoded as lossless WebP,
 /// and written to `{STORAGE_DIR}/{bucket}/{uuid}.webp` where `uuid` is a
-/// fresh UUIDv7. Image processing runs inside `spawn_blocking` since it is
+/// fresh `UUIDv7`. Image processing runs inside `spawn_blocking` since it is
 /// CPU-bound and would otherwise block the async runtime.
 pub async fn handler(
     State(config): State<Arc<AppConfig>>,
@@ -90,9 +90,7 @@ pub async fn handler(
                     AppError::BadRequest(format!("invalid max_dimension_override field: {e}"))
                 })?;
                 let value: u32 = text.parse().map_err(|_| {
-                    AppError::BadRequest(
-                        "max_dimension_override must be a positive integer".into(),
-                    )
+                    AppError::BadRequest("max_dimension_override must be a positive integer".into())
                 })?;
                 if !(MIN_DIMENSION..=MAX_DIMENSION).contains(&value) {
                     return Err(AppError::BadRequest(format!(
@@ -114,10 +112,9 @@ pub async fn handler(
 
     // An override can only make the output smaller than (or equal to) the
     // bucket's configured limit, never larger.
-    let max_dimension = match max_dimension_override {
-        Some(override_value) => override_value.min(bucket_cfg.max_dimension),
-        None => bucket_cfg.max_dimension,
-    };
+    let max_dimension = max_dimension_override.map_or(bucket_cfg.max_dimension, |override_value| {
+        override_value.min(bucket_cfg.max_dimension)
+    });
 
     let bytes_len = image_bytes.len();
     let webp = tokio::task::spawn_blocking(move || process_image(&image_bytes, max_dimension))
@@ -141,9 +138,7 @@ pub async fn handler(
         image_id: image_id.to_string(),
         url: format!(
             "{}/{}/{}",
-            config.public_base_url,
-            bucket_cfg.name,
-            image_id
+            config.public_base_url, bucket_cfg.name, image_id
         ),
     }))
 }

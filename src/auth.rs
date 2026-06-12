@@ -43,5 +43,8 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         return false;
     }
 
-    a.iter().zip(b.iter()).fold(0u8, |diff, (x, y)| diff | (x ^ y)) == 0
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |diff, (x, y)| diff | (x ^ y))
+        == 0
 }

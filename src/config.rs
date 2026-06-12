@@ -64,8 +64,9 @@ impl AppConfig {
 
         let api_token = env::var("API_TOKEN").expect("API_TOKEN env var must be set");
 
-        let buckets_config_path =
-            PathBuf::from(env::var("BUCKETS_CONFIG_PATH").unwrap_or_else(|_| "./buckets.toml".to_string()));
+        let buckets_config_path = PathBuf::from(
+            env::var("BUCKETS_CONFIG_PATH").unwrap_or_else(|_| "./buckets.toml".to_string()),
+        );
         let buckets = Buckets::load(&buckets_config_path);
 
         let cleanup_interval_secs: u64 = env::var("CLEANUP_INTERVAL_SECS")

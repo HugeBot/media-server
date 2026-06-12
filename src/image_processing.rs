@@ -26,10 +26,10 @@ pub fn process_image(bytes: &[u8], max_dimension: u32) -> Result<Vec<u8>, AppErr
     let (width, height) = img.dimensions();
     let (target_width, target_height) = target_dimensions(width, height, max_dimension);
 
-    let resized = if (target_width, target_height) != (width, height) {
-        img.resize(target_width, target_height, FilterType::Lanczos3)
-    } else {
+    let resized = if (target_width, target_height) == (width, height) {
         img
+    } else {
+        img.resize(target_width, target_height, FilterType::Lanczos3)
     };
 
     let rgba = resized.to_rgba8();
@@ -46,18 +46,24 @@ pub fn process_image(bytes: &[u8], max_dimension: u32) -> Result<Vec<u8>, AppErr
 /// Computes the output dimensions: the longest side is capped at
 /// `max_dimension`, the other side scales proportionally. Images smaller than
 /// `max_dimension` on their longest side are left unchanged.
+// The scaled side is always >= 0 and <= `max_dimension` (capped at
+// `buckets::MAX_DIMENSION`, well within `u32`), so the f64 -> u32 round-trip
+// below never truncates or loses sign.
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn target_dimensions(width: u32, height: u32, max_dimension: u32) -> (u32, u32) {
     if width >= height {
         if width <= max_dimension {
             (width, height)
         } else {
-            let new_height = (height as f64 * max_dimension as f64 / width as f64).round() as u32;
+            let new_height =
+                (f64::from(height) * f64::from(max_dimension) / f64::from(width)).round() as u32;
             (max_dimension, new_height.max(1))
         }
     } else if height <= max_dimension {
         (width, height)
     } else {
-        let new_width = (width as f64 * max_dimension as f64 / height as f64).round() as u32;
+        let new_width =
+            (f64::from(width) * f64::from(max_dimension) / f64::from(height)).round() as u32;
         (new_width.max(1), max_dimension)
     }
 }

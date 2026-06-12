@@ -23,3 +23,11 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[lints.rust]
+future-incompatible = "warn"
+nonstandard_style = { level = "deny", priority = -1 }
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

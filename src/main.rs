@@ -38,6 +38,8 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+// `/{bucket}/{image_id}` are axum route templates, not format strings.
+#[expect(clippy::literal_string_with_formatting_args)]
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -85,8 +87,7 @@ async fn main() {
                     let route = req
                         .extensions()
                         .get::<MatchedPath>()
-                        .map(MatchedPath::as_str)
-                        .unwrap_or(req.uri().path());
+                        .map_or_else(|| req.uri().path(), MatchedPath::as_str);
 
                     tracing::info_span!(
                         "request",
@@ -102,17 +103,24 @@ async fn main() {
                 // Catches transport-level failures (e.g. the connection
                 // dropping mid-response), which `on_response` does not see.
                 .on_failure(|error, latency: Duration, _span: &Span| {
-                    tracing::error!(?error, ?latency, "request failed at the transport layer")
+                    tracing::error!(?error, ?latency, "request failed at the transport layer");
                 }),
         );
 
-    let listener = TcpListener::bind(&config.bind_addr).await.unwrap();
-    tracing::info!("listening on {}", listener.local_addr().unwrap());
+    let listener = TcpListener::bind(&config.bind_addr)
+        .await
+        .unwrap_or_else(|e| panic!("failed to bind {}: {e}", config.bind_addr));
+    tracing::info!(
+        "listening on {}",
+        listener
+            .local_addr()
+            .expect("bound listener must have a local address")
+    );
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .unwrap();
+        .expect("server error");
 }
 
 /// Resolves once a Ctrl+C (`SIGINT`) or, on Unix, `SIGTERM` is received, so
@@ -136,8 +144,8 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
+        () = ctrl_c => {},
+        () = terminate => {},
     }
 
     tracing::info!("shutdown signal received");
