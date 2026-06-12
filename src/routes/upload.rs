@@ -1,3 +1,7 @@
+//! `POST /upload` — protected route that accepts a multipart image upload,
+//! resizes and re-encodes it as lossless WebP, and stores it in the
+//! requested bucket.
+
 use std::sync::Arc;
 
 use axum::Json;
@@ -11,13 +15,39 @@ use crate::config::AppConfig;
 use crate::error::AppError;
 use crate::image_processing::process_image;
 
+/// Content types accepted for the `image` field, matching the decoders
+/// enabled in `image`'s Cargo features (jpeg, png, gif, webp).
+const ALLOWED_IMAGE_CONTENT_TYPES: &[&str] =
+    &["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+/// JSON body returned on a successful upload.
 #[derive(Serialize)]
 pub struct UploadResponse {
+    /// Name of the bucket the image was stored in.
     bucket: String,
+    /// UUIDv7 identifier assigned to the stored image.
     image_id: String,
+    /// Fully-qualified public URL from which the image can be fetched
+    /// (`GET /{bucket}/{image_id}`).
     url: String,
 }
 
+/// Handles `POST /upload`.
+///
+/// Expects a `multipart/form-data` body with:
+/// - `bucket` (required): name of an existing bucket from `buckets.toml`.
+/// - `image` (required): the image file, with a `Content-Type` of
+///   `image/jpeg`, `image/png`, `image/gif` or `image/webp`.
+/// - `max_dimension_override` (optional): resize to this many pixels on the
+///   longest side instead of the bucket's configured `max_dimension`. Must
+///   be within [`MIN_DIMENSION`]..=[`MAX_DIMENSION`], and is capped at the
+///   bucket's `max_dimension` (it can only shrink the output, never enlarge
+///   it beyond what the bucket allows).
+///
+/// On success, the image is decoded, resized, re-encoded as lossless WebP,
+/// and written to `{STORAGE_DIR}/{bucket}/{uuid}.webp` where `uuid` is a
+/// fresh UUIDv7. Image processing runs inside `spawn_blocking` since it is
+/// CPU-bound and would otherwise block the async runtime.
 pub async fn handler(
     State(config): State<Arc<AppConfig>>,
     mut multipart: Multipart,
@@ -26,6 +56,8 @@ pub async fn handler(
     let mut image_bytes: Option<Bytes> = None;
     let mut max_dimension_override: Option<u32> = None;
 
+    // Multipart fields can arrive in any order, so collect them all before
+    // validating that the required ones are present.
     while let Some(field) = multipart
         .next_field()
         .await
@@ -40,6 +72,13 @@ pub async fn handler(
                 bucket = Some(text);
             }
             Some("image") => {
+                let content_type = field.content_type().unwrap_or_default();
+                if !ALLOWED_IMAGE_CONTENT_TYPES.contains(&content_type) {
+                    return Err(AppError::BadRequest(format!(
+                        "unsupported image content type '{content_type}', expected one of {ALLOWED_IMAGE_CONTENT_TYPES:?}"
+                    )));
+                }
+
                 let bytes = field
                     .bytes()
                     .await
@@ -62,6 +101,7 @@ pub async fn handler(
                 }
                 max_dimension_override = Some(value);
             }
+            // Ignore any other fields the client may send.
             _ => {}
         }
     }
@@ -71,6 +111,9 @@ pub async fn handler(
         image_bytes.ok_or_else(|| AppError::BadRequest("missing image field".into()))?;
 
     let bucket_cfg = config.buckets.get(&bucket)?;
+
+    // An override can only make the output smaller than (or equal to) the
+    // bucket's configured limit, never larger.
     let max_dimension = match max_dimension_override {
         Some(override_value) => override_value.min(bucket_cfg.max_dimension),
         None => bucket_cfg.max_dimension,
@@ -83,10 +126,7 @@ pub async fn handler(
 
     let image_id = Uuid::now_v7();
 
-    let path = config
-        .storage_dir
-        .join(&bucket_cfg.name)
-        .join(format!("{image_id}.webp"));
+    let path = bucket_cfg.image_path(&config.storage_dir, image_id);
     tokio::fs::write(&path, webp).await?;
 
     tracing::info!(

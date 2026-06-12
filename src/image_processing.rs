@@ -1,3 +1,9 @@
+//! CPU-bound image decoding, resizing and WebP re-encoding.
+//!
+//! [`process_image`] is run inside `tokio::task::spawn_blocking` by the
+//! upload handler so this synchronous, CPU-heavy work doesn't block the
+//! async runtime.
+
 use image::codecs::webp::WebPEncoder;
 use image::{ExtendedColorType, GenericImageView, ImageEncoder, imageops::FilterType};
 
@@ -6,6 +12,14 @@ use crate::error::AppError;
 /// Decodes the input image, resizes it so its longest side is at most
 /// `max_dimension` (preserving aspect ratio, never upscaling), and encodes
 /// the result as a lossless WebP.
+///
+/// `max_dimension` is the *effective* cap for this upload: the upload
+/// handler computes it from the bucket's configured `max_dimension` and any
+/// `max_dimension_override` from the request.
+///
+/// Re-encoding is always lossless (`WebPEncoder::new_lossless`) regardless
+/// of the input format, trading file size for fidelity and avoiding the
+/// extra native dependencies a lossy WebP encoder would require.
 pub fn process_image(bytes: &[u8], max_dimension: u32) -> Result<Vec<u8>, AppError> {
     let img = image::load_from_memory(bytes).map_err(AppError::DecodeError)?;
 

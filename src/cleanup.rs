@@ -1,3 +1,7 @@
+//! Background task that periodically deletes expired images from each
+//! bucket's storage directory, based on the bucket's configured
+//! [`crate::buckets::BucketConfig::max_age`].
+
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -5,7 +9,12 @@ use crate::config::AppConfig;
 
 /// Spawns a background task that periodically removes files older than each
 /// bucket's configured lifetime from its storage directory. Buckets without
-/// a configured lifetime are permanent and skipped.
+/// a configured lifetime (`max_age = None`, i.e. permanent buckets) are
+/// skipped entirely.
+///
+/// Runs on its own Tokio task at `config.cleanup_interval`, for the lifetime
+/// of the process (the returned `JoinHandle` is not awaited; the task is
+/// implicitly cancelled on shutdown).
 pub fn spawn(config: Arc<AppConfig>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(config.cleanup_interval);
@@ -16,13 +25,20 @@ pub fn spawn(config: Arc<AppConfig>) -> tokio::task::JoinHandle<()> {
     })
 }
 
+/// Performs a single cleanup pass over every configured bucket.
+///
+/// For each non-permanent bucket, lists `*.webp` files in its storage
+/// directory and removes those whose modification time is older than the
+/// bucket's `max_age`. Missing directories, unreadable entries, and files
+/// that fail to delete are silently skipped (best-effort cleanup; they will
+/// simply be retried on the next pass).
 async fn run_once(config: &AppConfig) {
     for bucket in config.buckets.iter() {
         let Some(max_age) = bucket.max_age else {
             continue;
         };
 
-        let dir = config.storage_dir.join(&bucket.name);
+        let dir = bucket.storage_dir(&config.storage_dir);
 
         let mut entries = match tokio::fs::read_dir(&dir).await {
             Ok(entries) => entries,

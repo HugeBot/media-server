@@ -1,3 +1,6 @@
+//! `GET /{bucket}/{image_id}` — public route that streams a stored WebP
+//! image.
+
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -14,6 +17,9 @@ use crate::error::AppError;
 /// Serves the stored WebP file, delegating to `ServeFile` for conditional
 /// requests (`If-None-Match`/`If-Modified-Since` -> 304), `Range` requests,
 /// and streaming the body instead of buffering it in memory.
+///
+/// Adds a one-year `immutable` `Cache-Control` header on success, since
+/// stored files are content-addressed by UUID and never modified in place.
 pub async fn handler(
     State(config): State<Arc<AppConfig>>,
     Path((bucket, image_id)): Path<(String, String)>,
@@ -22,11 +28,10 @@ pub async fn handler(
     let bucket_cfg = config.buckets.get(&bucket)?;
     let image_id: Uuid = image_id.parse().map_err(|_| AppError::InvalidImageId)?;
 
-    let path = config
-        .storage_dir
-        .join(&bucket_cfg.name)
-        .join(format!("{image_id}.webp"));
+    let path = bucket_cfg.image_path(&config.storage_dir, image_id);
 
+    // `ServeFile`'s `Service::Error` is `Infallible`: missing files and I/O
+    // errors are reported via the response status, not as a `Result::Err`.
     let response = ServeFile::new(&path).oneshot(request).await.unwrap();
 
     if response.status() == StatusCode::NOT_FOUND {

@@ -1,3 +1,15 @@
+//! Entry point: builds the application configuration, wires up routing,
+//! middleware and tracing, and serves until shutdown.
+//!
+//! ## Module overview
+//! - [`config`]: environment-driven application configuration.
+//! - [`buckets`]: per-bucket configuration (max dimension, lifetime).
+//! - [`auth`]: bearer-token middleware for protected routes.
+//! - [`routes`]: HTTP handlers (`upload`, `serve`, `delete`).
+//! - [`image_processing`]: resize + WebP re-encoding.
+//! - [`cleanup`]: background task that expires old images per bucket.
+//! - [`error`]: shared error type and its HTTP response mapping.
+
 mod auth;
 mod buckets;
 mod cleanup;
@@ -34,8 +46,10 @@ async fn main() {
 
     let config = Arc::new(AppConfig::from_env());
 
+    // Ensure every configured bucket has its storage directory, so uploads
+    // never fail with ENOENT on a fresh volume.
     for bucket in config.buckets.iter() {
-        let dir = config.storage_dir.join(&bucket.name);
+        let dir = bucket.storage_dir(&config.storage_dir);
         tokio::fs::create_dir_all(&dir)
             .await
             .unwrap_or_else(|e| panic!("failed to create storage dir {}: {e}", dir.display()));
@@ -43,6 +57,7 @@ async fn main() {
 
     cleanup::spawn(config.clone());
 
+    // Routes that require a valid `Authorization: Bearer <API_TOKEN>` header.
     let protected = Router::new()
         .route("/upload", post(routes::upload::handler))
         .route("/{bucket}/{image_id}", delete(routes::delete::handler))
@@ -51,6 +66,7 @@ async fn main() {
             auth::require_token,
         ));
 
+    // Routes anyone can call.
     let public = Router::new()
         .route("/{bucket}/{image_id}", get(routes::serve::handler))
         .route("/health", get(|| async { "OK" }));
@@ -61,6 +77,10 @@ async fn main() {
         .with_state(config.clone())
         .layer(
             TraceLayer::new_for_http()
+                // Tag each request's tracing span with its method and
+                // matched route template (e.g. "/{bucket}/{image_id}"
+                // rather than the literal path), so logs aggregate per
+                // endpoint regardless of the concrete bucket/id.
                 .make_span_with(|req: &Request<_>| {
                     let route = req
                         .extensions()
@@ -79,6 +99,8 @@ async fn main() {
                         .level(Level::INFO)
                         .latency_unit(LatencyUnit::Millis),
                 )
+                // Catches transport-level failures (e.g. the connection
+                // dropping mid-response), which `on_response` does not see.
                 .on_failure(|error, latency: Duration, _span: &Span| {
                     tracing::error!(?error, ?latency, "request failed at the transport layer")
                 }),
@@ -93,6 +115,8 @@ async fn main() {
         .unwrap();
 }
 
+/// Resolves once a Ctrl+C (`SIGINT`) or, on Unix, `SIGTERM` is received, so
+/// `axum::serve` can drain in-flight requests before exiting.
 async fn shutdown_signal() {
     let ctrl_c = async {
         signal::ctrl_c()
