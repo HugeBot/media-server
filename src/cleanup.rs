@@ -5,6 +5,7 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use crate::buckets::DEFAULT_IMAGE_FILENAME;
 use crate::config::AppConfig;
 
 /// Spawns a background task that periodically removes files older than each
@@ -48,6 +49,10 @@ async fn run_once(config: &AppConfig) {
         while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("webp") {
+                continue;
+            }
+            // Never expire the optional per-bucket fallback image.
+            if path.file_name().and_then(|n| n.to_str()) == Some(DEFAULT_IMAGE_FILENAME) {
                 continue;
             }
 

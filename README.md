@@ -57,6 +57,8 @@ curl -X POST https://static-media.huge.bot/upload \
 
 Public. Streams the stored WebP file. Supports `If-None-Match`/`If-Modified-Since` (returns `304`), `Range` requests, and sets `Cache-Control: public, max-age=31536000, immutable`.
 
+If `{image_id}.webp` doesn't exist and the bucket has a `_default.webp` file (see below), that fallback is served instead with `200 OK` and `Cache-Control: public, max-age=30`. Otherwise returns `404 Not Found`.
+
 ### `DELETE /{bucket}/{image_id}`
 
 Protected (`Authorization: Bearer <API_TOKEN>`). Removes the stored file. Returns `204 No Content`.
@@ -102,6 +104,10 @@ max_age_days = 15
 ```
 
 The server validates this file on startup and panics with a descriptive error if it is missing, empty, or contains an invalid bucket (bad name format, duplicate name, out-of-range `max_dimension`, or `max_age_days = 0`). The configured storage directory for each bucket is created automatically on startup if it doesn't exist.
+
+### Per-bucket fallback image
+
+Drop a `_default.webp` file into a bucket's storage directory (e.g. `{STORAGE_DIR}/stream-previews/_default.webp`) to have `GET /{bucket}/{image_id}` serve it with `200 OK` whenever the requested `{image_id}.webp` doesn't exist — useful for buckets like Twitch stream previews, where a streamer may currently be offline and have no stored preview. No restart or config change is needed; just copy the file into the bucket's volume. The background cleanup task never removes `_default.webp`, regardless of the bucket's `max_age_days`.
 
 ## Running locally
 

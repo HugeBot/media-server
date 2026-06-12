@@ -21,6 +21,12 @@ pub const MIN_DIMENSION: u32 = 16;
 /// Largest accepted value for `max_dimension` and `max_dimension_override`.
 pub const MAX_DIMENSION: u32 = 4096;
 
+/// Filename of the optional per-bucket fallback image. If
+/// `{storage_dir}/{bucket}/_default.webp` exists, [`crate::routes::serve`]
+/// serves it with `200 OK` when the requested `{image_id}.webp` doesn't
+/// exist, and [`crate::cleanup`] never deletes it.
+pub const DEFAULT_IMAGE_FILENAME: &str = "_default.webp";
+
 /// Raw shape of the `buckets.toml` file.
 #[derive(Debug, Deserialize)]
 struct BucketsFile {
@@ -62,6 +68,13 @@ impl BucketConfig {
     pub fn image_path(&self, storage_root: &Path, image_id: Uuid) -> PathBuf {
         self.storage_dir(storage_root)
             .join(format!("{image_id}.webp"))
+    }
+
+    /// Returns the path to this bucket's optional fallback image
+    /// (`{storage_root}/{bucket_name}/_default.webp`), served when the
+    /// requested image doesn't exist.
+    pub fn default_image_path(&self, storage_root: &Path) -> PathBuf {
+        self.storage_dir(storage_root).join(DEFAULT_IMAGE_FILENAME)
     }
 }
 
