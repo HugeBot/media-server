@@ -30,8 +30,11 @@ Protected (`Authorization: Bearer <API_TOKEN>`). Accepts a `multipart/form-data`
 | `bucket` | yes | Name of the target bucket, must exist in `buckets.toml`. |
 | `image` | yes | The image file (jpeg, png, gif or webp). |
 | `max_dimension_override` | no | Resize the longest side to this value instead of the bucket's configured `max_dimension`. Must be between 16 and 4096, and is capped at the bucket's configured `max_dimension` (it can only make images smaller, never larger). |
+| `is_default` | no | If `true`, store the image as the bucket's fallback (`_default.webp`, see below) instead of a new file, overwriting any previous fallback. |
 
-The image is decoded, resized so its longest side does not exceed the effective max dimension (aspect ratio preserved, never upscaled), re-encoded as lossless WebP, and stored as `{STORAGE_DIR}/{bucket}/{uuid}.webp` (UUIDv7).
+The image is decoded, resized so its longest side does not exceed the effective max dimension (aspect ratio preserved, never upscaled), and re-encoded as lossless WebP.
+
+Unless `is_default` is set, it's stored as `{STORAGE_DIR}/{bucket}/{uuid}.webp` (UUIDv7).
 
 Response:
 
@@ -51,6 +54,23 @@ curl -X POST https://static-media.huge.bot/upload \
   -F "bucket=giveaways" \
   -F "image=@photo.jpg" \
   -F "max_dimension_override=512"
+```
+
+If `is_default` is set, it's stored as `{STORAGE_DIR}/{bucket}/_default.webp` instead, and the response is:
+
+```json
+{
+  "bucket": "stream-previews",
+  "default_image": true
+}
+```
+
+```bash
+curl -X POST https://static-media.huge.bot/upload \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -F "bucket=stream-previews" \
+  -F "image=@offline.png" \
+  -F "is_default=true"
 ```
 
 ### `GET /{bucket}/{image_id}`
@@ -107,7 +127,9 @@ The server validates this file on startup and panics with a descriptive error if
 
 ### Per-bucket fallback image
 
-Drop a `_default.webp` file into a bucket's storage directory (e.g. `{STORAGE_DIR}/stream-previews/_default.webp`) to have `GET /{bucket}/{image_id}` serve it with `200 OK` whenever the requested `{image_id}.webp` doesn't exist — useful for buckets like Twitch stream previews, where a streamer may currently be offline and have no stored preview. No restart or config change is needed; just copy the file into the bucket's volume. The background cleanup task never removes `_default.webp`, regardless of the bucket's `max_age_days`.
+Set a `_default.webp` file in a bucket's storage directory (e.g. `{STORAGE_DIR}/stream-previews/_default.webp`) to have `GET /{bucket}/{image_id}` serve it with `200 OK` whenever the requested `{image_id}.webp` doesn't exist — useful for buckets like Twitch stream previews, where a streamer may currently be offline and have no stored preview. The background cleanup task never removes `_default.webp`, regardless of the bucket's `max_age_days`.
+
+Set it either by copying the file directly into the bucket's volume, or via `POST /upload` with `is_default=true` (see above) — no restart or config change needed either way.
 
 ## Running locally
 

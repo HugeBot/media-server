@@ -22,14 +22,26 @@ const ALLOWED_IMAGE_CONTENT_TYPES: &[&str] =
 
 /// JSON body returned on a successful upload.
 #[derive(Serialize)]
-pub struct UploadResponse {
-    /// Name of the bucket the image was stored in.
-    bucket: String,
-    /// `UUIDv7` identifier assigned to the stored image.
-    image_id: String,
-    /// Fully-qualified public URL from which the image can be fetched
-    /// (`GET /{bucket}/{image_id}`).
-    url: String,
+#[serde(untagged)]
+pub enum UploadResponse {
+    /// A regular image, stored under a fresh `UUIDv7`.
+    Image {
+        /// Name of the bucket the image was stored in.
+        bucket: String,
+        /// `UUIDv7` identifier assigned to the stored image.
+        image_id: String,
+        /// Fully-qualified public URL from which the image can be fetched
+        /// (`GET /{bucket}/{image_id}`).
+        url: String,
+    },
+    /// The bucket's fallback image (see [`crate::buckets::DEFAULT_IMAGE_FILENAME`]),
+    /// stored when the `is_default` field is set.
+    Default {
+        /// Name of the bucket whose fallback image was set.
+        bucket: String,
+        /// Always `true`.
+        default_image: bool,
+    },
 }
 
 /// Handles `POST /upload`.
@@ -43,11 +55,16 @@ pub struct UploadResponse {
 ///   be within [`MIN_DIMENSION`]..=[`MAX_DIMENSION`], and is capped at the
 ///   bucket's `max_dimension` (it can only shrink the output, never enlarge
 ///   it beyond what the bucket allows).
+/// - `is_default` (optional): if set to `true`, the image is stored as the
+///   bucket's fallback image (`{STORAGE_DIR}/{bucket}/_default.webp`,
+///   see [`crate::buckets::DEFAULT_IMAGE_FILENAME`]) instead of a new
+///   `{uuid}.webp`, overwriting any previous fallback.
 ///
-/// On success, the image is decoded, resized, re-encoded as lossless WebP,
-/// and written to `{STORAGE_DIR}/{bucket}/{uuid}.webp` where `uuid` is a
-/// fresh `UUIDv7`. Image processing runs inside `spawn_blocking` since it is
-/// CPU-bound and would otherwise block the async runtime.
+/// On success, the image is decoded, resized and re-encoded as lossless
+/// WebP. Image processing runs inside `spawn_blocking` since it is CPU-bound
+/// and would otherwise block the async runtime. Unless `is_default` is set,
+/// it is written to `{STORAGE_DIR}/{bucket}/{uuid}.webp` where `uuid` is a
+/// fresh `UUIDv7`.
 pub async fn handler(
     State(config): State<Arc<AppConfig>>,
     mut multipart: Multipart,
@@ -55,6 +72,7 @@ pub async fn handler(
     let mut bucket: Option<String> = None;
     let mut image_bytes: Option<Bytes> = None;
     let mut max_dimension_override: Option<u32> = None;
+    let mut is_default = false;
 
     // Multipart fields can arrive in any order, so collect them all before
     // validating that the required ones are present.
@@ -99,6 +117,13 @@ pub async fn handler(
                 }
                 max_dimension_override = Some(value);
             }
+            Some("is_default") => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("invalid is_default field: {e}")))?;
+                is_default = text.trim().eq_ignore_ascii_case("true") || text.trim() == "1";
+            }
             // Ignore any other fields the client may send.
             _ => {}
         }
@@ -121,6 +146,22 @@ pub async fn handler(
         .await
         .expect("image processing task panicked")?;
 
+    if is_default {
+        let path = bucket_cfg.default_image_path(&config.storage_dir);
+        tokio::fs::write(&path, webp).await?;
+
+        tracing::info!(
+            bucket = bucket_cfg.name,
+            bytes = bytes_len,
+            "stored bucket fallback image"
+        );
+
+        return Ok(Json(UploadResponse::Default {
+            bucket: bucket_cfg.name.clone(),
+            default_image: true,
+        }));
+    }
+
     let image_id = Uuid::now_v7();
 
     let path = bucket_cfg.image_path(&config.storage_dir, image_id);
@@ -133,7 +174,7 @@ pub async fn handler(
         "stored uploaded image"
     );
 
-    Ok(Json(UploadResponse {
+    Ok(Json(UploadResponse::Image {
         bucket: bucket_cfg.name.clone(),
         image_id: image_id.to_string(),
         url: format!(

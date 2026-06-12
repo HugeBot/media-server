@@ -56,17 +56,20 @@ pub async fn handler(
         *fallback_request.method_mut() = method;
         *fallback_request.headers_mut() = headers;
 
-        let fallback_response =
-            ServeFile::new(&default_path).oneshot(fallback_request).await.unwrap();
+        let fallback_response = ServeFile::new(&default_path)
+            .oneshot(fallback_request)
+            .await
+            .unwrap();
 
         if fallback_response.status() == StatusCode::NOT_FOUND {
             return Err(AppError::NotFound);
         }
 
         let mut response = fallback_response.map(Body::new).into_response();
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=30"));
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=30"),
+        );
 
         return Ok(response);
     }
